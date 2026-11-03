@@ -9,16 +9,46 @@ Retarget animation between humanoid rigs in one click: **P2M rigs** (Regular, Fe
 * **Install:** Drag and drop the `.zip` file straight into the Blender 5.0+ window, keep **Enable Add-on** ticked, and click **OK**.
 * **Panel:** **3D Viewport → Sidebar (`N`) → BP Retarget**
 
-Supported standards (auto-detected; unknown rigs are guessed from bone names and hierarchy, and any bone can be
-mapped by hand):
+---
 
-* **Plain skeletons (read and written directly):** Mixamo (`mixamorig:`, `mixamorig1:`, no prefix), OptiTrack Motive
-  (any asset prefix such as `Skeleton_`), MotionBuilder / HumanIK, Unreal Engine 5 Manny/Quinn/MetaHuman, UEFN
-  Mannequin, Unreal Engine 4 Mannequin, Character Creator / ActorCore / iClone, AccuRIG's MotionBuilder preset, Daz
-  Genesis 8 and 9, VRoid, VRM Humanoid, Rigify metarig, Rigify DEF (game export), Auto-Rig Pro (export or FK rig),
-  CMU BVH, 3ds Max Biped, MMD, VRChat/Cats, RenderPeople.
-* **Control rigs (read from their final pose, written by keying their FK or IK controls):** P2M, generated Rigify.
-* **Read only:** a full Auto-Rig Pro rig read from its deform bones.
+## Auto-Detected Rig Standards
+
+You do **not** need to configure bone lists or load mapping presets. As soon as you pick a Source and Target armature (or click **Use Selected**), the add-on automatically detects the rig standard, strips any asset/namespace prefixes, and maps up to 58 body and finger joints.
+
+### 1. Control Rigs (Solved via FK / IK Controls)
+| Standard | Rigs Covered | Direction | How it Works |
+|---|---|---|---|
+| **P2M** | P2M **Regular**, **Female**, **Big**, **Strong** | **Source ↔ Target** | Reads evaluated `ORG-`/`DEF-` pose; writes **FK**, **IK Legs**, or **Full IK** controls & switches |
+| **Rigify (Generated)** | Full generated Blender **Rigify** human rig | **Source ↔ Target** | Reads evaluated `ORG-` pose; writes **FK**, **IK Legs**, or **Full IK** controls & switches |
+| **Auto-Rig Pro (FK)** | Full **Auto-Rig Pro** rig (`c_` FK controls) | **Source ↔ Target** | Writes `c_*_fk` controls and automatically switches `ik_fk_switch` to FK (`1.0`) |
+| **Auto-Rig Pro (Deform)** | Full **Auto-Rig Pro** rig (read from deform bones) | **Source only** | Reads evaluated deform bones (`root.x`, `*_stretch`) including IK/constraints |
+
+### 2. Game Engine, DCC & Character Creator Rigs (Read & Written Directly)
+| Standard | Rigs / Software Covered | Direction | Notes |
+|---|---|---|---|
+| **Mixamo** | Adobe **Mixamo** (`mixamorig:`, `mixamorig1:` .. `9:`, or no prefix) | **Source ↔ Target** | Includes **New Mixamo Rig** generator to build a clean Mixamo skeleton from any source |
+| **Unreal Engine 5 (Manny / Quinn / MetaHuman)** | **UE5** `SK_Mannequin` (`Manny`, `Quinn`) & **MetaHuman** | **Source ↔ Target** | 5-bone spine (`spine_01`..`spine_05`), metacarpals, and ground `root` travel |
+| **UEFN Mannequin** | **Unreal Editor for Fortnite** `SK_UEFN_Mannequin` | **Source ↔ Target** | Recognises `attach` hierarchy and 5-bone spine |
+| **Unreal Engine 4 Mannequin** | **UE4** `SK_Mannequin` & Marketplace UE4 exports | **Source ↔ Target** | 3-bone spine (`spine_01`..`spine_03`) and ground `root` travel |
+| **OptiTrack Motive** | **OptiTrack Motive** FBX Binary & BVH exports | **Source ↔ Target** | Supports Motive, FBX, and BVH naming plus any custom asset prefix (e.g. `Skeleton_`, `Actor1:`) |
+| **HumanIK / MotionBuilder / Maya** | Autodesk **MotionBuilder**, **Maya HumanIK**, Rokoko HIK | **Source ↔ Target** | Supports up to 4 spine bones, 2 neck bones, and roll bone hierarchies |
+| **Character Creator / ActorCore / iClone** | Reallusion **CC3 / CC4**, **ActorCore**, **iClone** (`CC_Base_`) | **Source ↔ Target** | Handles `CC_Base_Hip`, `CC_Base_Waist`, `CC_Base_Spine01/02` |
+| **AccuRIG (MotionBuilder)** | Reallusion **AccuRIG** (`RL_` MotionBuilder export) | **Source ↔ Target** | Auto-strips `RL_` prefix and maps full body + fingers |
+| **Daz Genesis 8 / 3** | **Daz Studio** Genesis 8 & Genesis 3 (`hip`, `lShldrBend`, `lThighBend`) | **Source ↔ Target** | Preserves axial roll from in-chain twist bones (`lShldrTwist`, `lThighTwist`, `lForearmTwist`) |
+| **Daz Genesis 9** | **Daz Studio** Genesis 9 (`pelvis`, `spine1`..`4`, `l_upperarm`) | **Source ↔ Target** | Full 4-spine and 2-neck support |
+| **VRoid Studio** | **VRoid** (`J_Bip_C_Hips`, `J_Bip_L_UpperArm`, etc.) | **Source ↔ Target** | Full body and finger chain support |
+| **VRM / Unity Humanoid** | **VRM 0.x / 1.0** & **Unity Mecanim** humanoid rigs | **Source ↔ Target** | Standard `hips`, `spine`, `chest`, `upperChest`, `leftUpperArm` naming |
+| **Rigify Metarig** | Blender **Rigify** human metarig (`spine`..`spine.006`) | **Source ↔ Target** | Pre-generation Rigify metarig |
+| **Rigify Deform (`DEF-`)** | Game-engine **DEF-only** Rigify export (`DEF-spine`, `DEF-thigh.L`) | **Source ↔ Target** | Deform-only Rigify skeleton without control rig |
+| **Auto-Rig Pro Export** | **Auto-Rig Pro** game export (`root.x`, `spine_01.x`, `arm_stretch.l`) | **Source ↔ Target** | Unconstrained ARP export skeleton |
+| **3ds Max Biped** | Autodesk **3ds Max Biped** (`Bip01` / `Bip001` + `Pelvis`, `L Thigh`) | **Source ↔ Target** | Works with any custom Biped character name prefix |
+| **CMU BVH** | **Carnegie Mellon** mocap library & MakeHuman/bvhacker BVHs | **Source ↔ Target** | Handles zero-length `LHipJoint` / `RHipJoint` & `LowerBack` |
+| **VRChat / Cats** | **Cats Blender Plugin** & VRChat avatars (`Hips`, `Left leg`, `Left knee`) | **Source ↔ Target** | Standard VRChat humanoid naming |
+| **MMD (MikuMikuDance)** | **MMD** Japanese bone names (`センター`, `下半身`, `上半身`, `左腕`, etc.) | **Source ↔ Target** | Native Japanese MMD bone recognition |
+| **RenderPeople** | **RenderPeople** scanned rigged characters | **Source ↔ Target** | Full body + finger mapping |
+| **Unknown / Custom Rigs** | **Heuristic Auto-Guess** (any custom humanoid skeleton) | **Source ↔ Target** | Tokenizes bone names (`camelCase`, `ALLCAPS`, `_`, `.`, `-`) and walks parent/child chains |
+
+---
 
 ## Quick start
 
