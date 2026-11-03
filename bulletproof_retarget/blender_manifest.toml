@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "bulletproof_retarget"
+version = "1.3.0"
+name = "Bulletproof Retarget"
+tagline = "One-click animation retargeting: P2M, Mixamo, Rigify and more"
+maintainer = "NilsGallist"
+type = "add-on"
+website = "https://github.com/MondRubberduck/Bulletproof-Retarget"
+
+tags = ["Animation", "Rigging"]
+
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Save and load bone mapping presets (JSON)"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/.git/", "*.zip", "*.pyc"]
