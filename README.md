@@ -5,7 +5,7 @@ Retarget animation between humanoid rigs in one click: **P2M rigs** (Regular, Fe
 
 [![Download Latest Release](https://img.shields.io/github/v/release/MondRubberduck/Bulletproof-Retarget?label=Download%20Latest%20.zip&style=for-the-badge)](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)
 
-* **Download:** Grab **`bulletproof_retarget-1.3.0.zip`** from the **[Releases Page](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)** (or from [`dist/bulletproof_retarget-1.3.0.zip`](dist/bulletproof_retarget-1.3.0.zip)).
+* **Download:** Grab **`bulletproof_retarget-1.3.1.zip`** from the **[Releases Page](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)** (or from [`dist/bulletproof_retarget-1.3.1.zip`](dist/bulletproof_retarget-1.3.1.zip)).
 * **Install:** Drag and drop the `.zip` file straight into the Blender 5.0+ window, keep **Enable Add-on** ticked, and click **OK**.
 * **Panel:** **3D Viewport → Sidebar (`N`) → BP Retarget**
 
@@ -85,6 +85,20 @@ Mixamo → P2M, OptiTrack → Rigify and similar work like any other retarget, w
 
 Travel goes on the rig's `root` control and height on `torso` (set **Travel On** to *Hips* in Advanced to keep it all on `torso`).
 
+## Skeletons driven by a Rig Bridge control rig
+
+Rig Bridge is a separate add-on. It builds a control rig for a game or character creator skeleton (UE5, Character
+Creator, Daz and others) and drives the skeleton with it. Retarget onto the **skeleton** as usual. When the skeleton is
+bound to a Rig Bridge rig, the panel shows **Bake to Control Rig (<rig>)**, which is on by default. One click on
+**Retarget Animation** then writes the action onto the skeleton and runs Rig Bridge's *Bake to Control Rig*. The
+animation lands on the rig's FK/IK controls (using Rig Bridge's limb mode), and the rig keeps driving the skeleton.
+
+* Turn the option off to write only the skeleton's action. Rig Bridge's *Release Skeleton* then shows it.
+* Bulletproof Retarget doesn't need Rig Bridge and never imports it. It only checks whether the skeleton has a Rig
+  Bridge rig, then calls Rig Bridge's own operator.
+* To retarget *from* such a character, use Rig Bridge's *Bake to Skeleton* first and pick the skeleton as the source.
+* Forearm Twist Share is skipped on these skeletons, because Rig Bridge already drives the twist bones.
+
 ## OptiTrack
 
 Export **FBX Binary** from Motive. Blender only imports binary FBX, and only bones (limb nodes) become an armature, so a
@@ -98,6 +112,7 @@ publish it. This support was built from OptiTrack's documentation and tested on 
 |---|---|
 | A-pose (P2M) vs T-pose (Mixamo) | Rest poses are lined up automatically, bone by bone |
 | Different bone rolls / FBX axes (0.01 scale, 90° X rotation) | Works in world space, so orientation conventions don't matter |
+| Toes and fingertips without end bones, bone axes pointing sideways (FBX exports) | Lined up by the joint chain itself, not by the bone's axis, so toes don't flip and fingertips don't bend |
 | IK/FK switching, constraints, drivers in P2M | Reads the fully evaluated rig, so what you see is what you get |
 | 4 spine bones → 3, 2 neck bones → 1 | Chain bones re-aim at the source joints; in-between bones are interpolated |
 | Different character heights | Hip travel is scaled by leg length (pelvis height) |
@@ -118,6 +133,7 @@ modifiers, mode. The add-on never overwrites the source's own actions.
 
 **Your work is safe:** a re-run only replaces an action this add-on wrote and nobody edited since. If you made or
 polished an action with the same name, the new result gets the suffix `_retarget` and your action stays untouched.
+With **Overwrite Existing** off, every run keeps the earlier takes: `Walk_UE5`, `Walk_UE5_2`, `Walk_UE5_3` and so on.
 
 **Limits:** a rigid skeleton (or FK limbs) cannot squash or stretch, so if the source's limbs stretch, hands and feet
 can't land exactly (the report warns you). The forearm deliberately takes half of the wrist twist; set
@@ -150,7 +166,7 @@ the search fields, add a fine-tune rotation per joint, and save or load the mapp
 
 ## Install / update
 
-Drag `bulletproof_retarget-1.3.0.zip` onto the Blender window, keep **Enable Add-on** ticked and click **OK**. Then
+Drag `bulletproof_retarget-1.3.1.zip` onto the Blender window, keep **Enable Add-on** ticked and click **OK**. Then
 press **N** in the 3D Viewport and open the **BP Retarget** tab. No internet connection is needed. A newer zip installs
 over the old one the same way, and each Blender version needs its own install. If the tab is missing later, drag the zip
 in again.
@@ -179,6 +195,10 @@ powershell -File tests\run_matrix.ps1
 This runs all 4 P2M rigs × 2 Mixamo characters headless and measures joint direction, orientation and pelvis errors on
 the evaluated result. `tests\run_control_matrix.ps1` does the same for mocap onto P2M and generated Rigify rigs, and
 `tests\test_round_trip.py` sends a scene's animation P2M → Mixamo → P2M and compares it with the original.
+
+`tests\test_fbx_bone_axes.py` needs no extra files. It uses three real Character Creator exports (UE, AccuRIG and
+CC_Base names, in `tests\fixtures\fbx_axis_skeletons.json`). It retargets each one from a copy with clean bone axes
+onto its FBX axes, and every joint has to match.
 
 `tests\test_standards.py` checks which standard each skeleton gets, using real exports and the UE5 and UEFN skeletons in
 `tests\fixtures`. `tests\run_classroom_test.ps1 -Test 1 -Version 5.1` runs the installed add-on in a real Blender window with your own

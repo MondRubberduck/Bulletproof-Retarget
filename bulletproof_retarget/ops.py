@@ -122,6 +122,53 @@ def _armature_of(ob):
     return None
 
 
+def rig_bridge_rig(ob):
+    """Control rig of a skeleton bound by the separate Rig Bridge add-on, or None.
+
+    Only Rig Bridge's public data (``ob.rig_bridge.rig``) and its registered
+    operator are looked at - it is never imported, and nothing here needs it."""
+    st = getattr(ob, "rig_bridge", None) if ob is not None else None
+    rig = getattr(st, "rig", None) if st is not None else None
+    if rig is None or not _operator_exists("rig_bridge", "transfer"):
+        return None
+    return rig
+
+
+def _operator_exists(module, name):
+    try:
+        getattr(getattr(bpy.ops, module), name).get_rna_type()
+        return True
+    except (AttributeError, KeyError):
+        return False
+
+
+def _rig_bridge_bound(tgt, name):
+    pb = tgt.pose.bones.get(name)
+    return pb is not None and any(c.name.startswith("RB_") and not c.mute for c in pb.constraints)
+
+
+def _rig_bridge_bake(context, tgt):
+    """Run Rig Bridge > Bake to Control Rig on the target (its own operator)."""
+    vl = context.view_layer
+    prev_active, prev_sel = vl.objects.active, list(context.selected_objects)
+    hidden = tgt.hide_get()
+    try:
+        tgt.hide_set(False)
+        for o in prev_sel:
+            o.select_set(False)
+        vl.objects.active = tgt
+        tgt.select_set(True)
+        mode = getattr(tgt.rig_bridge, "bake_mode", "IK_LEGS")
+        return bpy.ops.rig_bridge.transfer(mode=mode)
+    finally:
+        tgt.select_set(False)
+        tgt.hide_set(hidden)
+        for o in prev_sel:
+            if o.name in vl.objects:
+                o.select_set(True)
+        vl.objects.active = prev_active
+
+
 def _target_overrides(tgt, bones):
     """Mapped target bones whose result would be overridden by constraints or drivers."""
     bones = set(bones)
@@ -345,6 +392,14 @@ def run_retarget(context, s, progress=True):
         if driver is not None and tgt.data.pose_position == 'REST':
             tgt.data.pose_position = 'POSE'
         over = _target_overrides(tgt, driver.keyed if driver else core.solved_bones(plan))
+        rb_rig = rig_bridge_rig(tgt) if driver is None else None
+        if rb_rig is not None:
+            rb_over = [b for b in over if _rig_bridge_bound(tgt, b)]
+            over = [b for b in over if b not in rb_over]
+            if rb_over and not s.rig_bridge_bake:
+                warnings.append(f"'{tgt.name}' is driven by its Rig Bridge control rig '{rb_rig.name}', so the new "
+                                f"keys don't show. Turn on 'Bake to Control Rig', or use Rig Bridge > Release "
+                                f"Skeleton to see them.")
         if over:
             warnings.append(f"{len(over)} target bone(s) have constraints or drivers that override the result "
                             f"(e.g. {over[0]}).")
@@ -481,6 +536,21 @@ def run_retarget(context, s, progress=True):
                 vis.restore()
             _restore_mode(context, saved_mode, (src, tgt))
 
+    # Hand the result to Rig Bridge (separate add-on) like Unreal's Bake to Control Rig.
+    if assigned and driver is None and s.rig_bridge_bake and rig_bridge_rig(tgt) is not None:
+        rb_rig = rig_bridge_rig(tgt)
+        try:
+            r = _rig_bridge_bake(context, tgt)
+            if 'FINISHED' in r:
+                notes.append(f"Baked onto the Rig Bridge control rig '{rb_rig.name}' (Bake to Control Rig)"
+                             + ("; batch: the last action only - bake the others from Rig Bridge."
+                                if len(results) > 1 else "."))
+            else:
+                warnings.append(f"Rig Bridge could not bake onto '{rb_rig.name}'; use Rig Bridge > Bake to "
+                                f"Control Rig.")
+        except Exception as e:  # noqa: BLE001 - another add-on: report, never fail the retarget
+            warnings.append(f"Rig Bridge Bake to Control Rig failed: {str(e).strip().splitlines()[-1]}")
+
     dt = time.perf_counter() - t0
     if len(results) == 1:
         head = f"'{results[0][0]}' - {results[0][1]} frames in {dt:.1f}s"
@@ -503,9 +573,10 @@ class BPR_OT_retarget(bpy.types.Operator):
     def execute(self, context):
         s = _settings(context)
         try:
-            head, warnings, notes, _ = run_retarget(context, s)
+            head, warnings, notes, results = run_retarget(context, s)
         except RetargetError as e:
             s.last_ok = False
+            s.last_action, s.last_frames = "", 0
             s.last_report = str(e) + _finished_line(e)
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
@@ -517,6 +588,8 @@ class BPR_OT_retarget(bpy.types.Operator):
             return {'CANCELLED'}
         s.last_ok = True
         s.last_report = "\n".join([head] + warnings + notes)
+        s.last_action = results[-1][0] if results else ""
+        s.last_frames = sum(r[1] for r in results)
         self.report({'WARNING'} if warnings else {'INFO'}, head + (" (with warnings)" if warnings else ""))
         return {'FINISHED'}
 

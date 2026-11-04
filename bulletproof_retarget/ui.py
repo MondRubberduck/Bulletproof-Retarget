@@ -2,7 +2,7 @@ import textwrap
 
 import bpy
 
-from . import mapping
+from . import mapping, ops
 from . import skeletons as sk
 
 
@@ -82,6 +82,9 @@ class BPR_PT_main(bpy.types.Panel):
                 'IK': "Keys IK limb & pole controls, limbs go to IK",
             }.get(s.control_mode, "Keys its FK controls, limbs go to FK")
             col.label(text=mode_label, icon='CON_ROTLIKE')
+        rb_rig = ops.rig_bridge_rig(s.target) if d is None or d.control is None else None
+        if rb_rig is not None:
+            col.prop(s, "rig_bridge_bake", text=f"Bake to Control Rig ({rb_rig.name})", icon='CON_ARMATURE')
         row = box.row(align=True)
         row.operator("bpr.use_selected", icon='RESTRICT_SELECT_OFF')
         sub = row.row(align=True)

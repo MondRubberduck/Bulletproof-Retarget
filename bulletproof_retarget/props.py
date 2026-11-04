@@ -191,7 +191,8 @@ class BPR_Settings(bpy.types.PropertyGroup):
     name_template: StringProperty(name="Name", default="{action}_{standard}",
                                   description="New action name. {action}, {target}, {standard}, {source}")
     overwrite: BoolProperty(name="Overwrite Existing", default=True,
-                            description="Replace an existing action with the same name instead of making .001")
+                            description="Replace an existing action with the same name. Off: keep it and name the new one "
+                                        "<name>_2, <name>_3 ...")
     fake_user: BoolProperty(name="Fake User", default=True,
                             description="Protect new actions from being lost on save")
     assign_result: BoolProperty(name="Assign to Target", default=True,
@@ -200,8 +201,17 @@ class BPR_Settings(bpy.types.PropertyGroup):
                                  description="Evaluate only the chosen action (NLA strips are muted during the bake)")
     fast_bake: BoolProperty(name="Fast Bake", default=True,
                             description="Skip evaluating meshes during the bake (much faster, restored afterwards)")
+    rig_bridge_bake: BoolProperty(
+        name="Bake to Control Rig", default=True,
+        description="The target skeleton is driven by a Rig Bridge control rig: write the retarget, then bake it "
+                    "onto the rig's controls (Rig Bridge > Bake to Control Rig) so the rig keeps driving the "
+                    "skeleton. Off: only the skeleton gets the action, and the rig hides it until you use "
+                    "Rig Bridge > Release Skeleton")
     last_report: StringProperty()
     last_ok: BoolProperty(default=True)
+    # machine-readable result of the last run (scripts, other add-ons)
+    last_action: StringProperty(description="Name of the action the last retarget wrote (last one in a batch)")
+    last_frames: IntProperty(description="Frames baked in the last retarget (all actions of a batch)")
 
 
 classes = (BPR_MapItem, BPR_BatchItem, BPR_Settings)

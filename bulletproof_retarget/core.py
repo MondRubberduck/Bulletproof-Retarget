@@ -133,6 +133,36 @@ def common_next(jid, src_map, tgt_map):
     return None
 
 
+PREV_JOINTS = {}
+for _j, _ns in sk.NEXT_JOINTS.items():
+    for _n in _ns:
+        PREV_JOINTS.setdefault(_n, _j)
+
+
+def fallback_directions(jid, s_rot, t_rot, s_pos, t_pos, s_eps, t_eps):
+    """Rest directions for a joint that has no next joint on both rigs (toes and
+    fingertips of game/FBX skeletons without end bones).
+
+    Both rigs use the chord from the previous joint (foot -> toe, finger_02 ->
+    finger_03): it means the same thing on every skeleton, so the joint simply
+    inherits its parent's rest alignment. Bone Y axes are only the last resort:
+    FBX imports (Character Creator, Unreal exports) leave them pointing sideways
+    or straight up/down - flattened, a toe axis can point backwards and the toe
+    turned 180 degrees; fingertips turned 60-110."""
+    prev = PREV_JOINTS.get(jid)
+    if prev is not None and prev in s_pos and prev in t_pos:
+        cs, ct = s_pos[jid] - s_pos[prev], t_pos[jid] - t_pos[prev]
+        if jid in sk.FLAT_JOINTS:
+            fs, ft = cs.copy(), ct.copy()
+            fs.z = ft.z = 0.0
+            ok = fs.length > s_eps and ft.length > t_eps
+        else:
+            ok = cs.length > s_eps and ct.length > t_eps
+        if ok:
+            return cs, ct
+    return s_rot[jid].col[1].copy(), t_rot[jid].col[1].copy()
+
+
 class Pair:
     __slots__ = ("joint", "src", "tgt", "next_joint", "src_next", "K", "ls_dir", "lt_dir", "aim",
                  "rot_offset", "twist_src", "twist_rel_ref", "twist_share", "twist_tgt",
@@ -370,8 +400,7 @@ def build_plan(src, tgt, mapping, settings, depsgraph=None):
                 ds = (s_pos[pair[0]] + s_pos[pair[1]]) / 2 - s_pos[jid]
                 dt = (t_pos[pair[0]] + t_pos[pair[1]]) / 2 - t_pos[jid]
         if ds.length < s_eps or dt.length < t_eps:
-            ds = s_rot[jid].col[1].copy()
-            dt = t_rot[jid].col[1].copy()
+            ds, dt = fallback_directions(jid, s_rot, t_rot, s_pos, t_pos, s_eps, t_eps)
             nxt = None
         if use_current or jid in sk.ORIENT_JOINTS:
             t_ref = t_rot[jid].copy()
@@ -993,7 +1022,13 @@ def write_action(buffer, action_name, overwrite=True, interpolation='BEZIER', fa
     while act is not None and (act in protect or (overwrite and not is_own_result(act))):
         name += "_retarget"
         act = bpy.data.actions.get(name)
-    if act is None or not overwrite or act.library is not None:
+    if act is not None and (not overwrite or act.library is not None):
+        # keep the earlier take: Walk_UE5_2, Walk_UE5_3 ... instead of Blender's .001
+        base, i = name, 2
+        while bpy.data.actions.get(f"{base}_{i}") is not None:
+            i += 1
+        name, act = f"{base}_{i}", None
+    if act is None:
         act = bpy.data.actions.new(name)
 
     ident = "OB" + tgt.name
