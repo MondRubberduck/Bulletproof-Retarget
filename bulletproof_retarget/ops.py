@@ -142,6 +142,17 @@ def _operator_exists(module, name):
         return False
 
 
+def rig_bridge_skeleton(rig):
+    """Skeleton driven by ``rig`` if it is a Rig Bridge control rig, else None."""
+    if rig is None or rig.type != 'ARMATURE' or getattr(rig, "rig_bridge", None) is None:
+        return None
+    for ob in bpy.data.objects:
+        st = getattr(ob, "rig_bridge", None) if ob.type == 'ARMATURE' else None
+        if st is not None and getattr(st, "rig", None) == rig:
+            return ob
+    return None
+
+
 def _rig_bridge_bound(tgt, name):
     pb = tgt.pose.bones.get(name)
     return pb is not None and any(c.name.startswith("RB_") and not c.mute for c in pb.constraints)

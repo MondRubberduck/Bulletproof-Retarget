@@ -5,7 +5,7 @@ Retarget animation between humanoid rigs in one click: **P2M rigs** (Regular, Fe
 
 [![Download Latest Release](https://img.shields.io/github/v/release/MondRubberduck/Bulletproof-Retarget?label=Download%20Latest%20.zip&style=for-the-badge)](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)
 
-* **Download:** Grab **`bulletproof_retarget-1.3.1.zip`** from the **[Releases Page](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)** (or from [`dist/bulletproof_retarget-1.3.1.zip`](dist/bulletproof_retarget-1.3.1.zip)).
+* **Download:** Grab **`bulletproof_retarget-1.3.2.zip`** from the **[Releases Page](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)** (or from [`dist/bulletproof_retarget-1.3.2.zip`](dist/bulletproof_retarget-1.3.2.zip)).
 * **Install:** Drag and drop the `.zip` file straight into the Blender 5.0+ window, keep **Enable Add-on** ticked, and click **OK**.
 * **Panel:** **3D Viewport → Sidebar (`N`) → BP Retarget**
 
@@ -93,6 +93,8 @@ bound to a Rig Bridge rig, the panel shows **Bake to Control Rig (<rig>)**, whic
 **Retarget Animation** then writes the action onto the skeleton and runs Rig Bridge's *Bake to Control Rig*. The
 animation lands on the rig's FK/IK controls (using Rig Bridge's limb mode), and the rig keeps driving the skeleton.
 
+* You can also pick the **control rig itself** as the target, in the Target field or with *Use Selected*. Bulletproof
+  Retarget switches to the skeleton the rig drives, then bakes back onto the rig.
 * Turn the option off to write only the skeleton's action. Rig Bridge's *Release Skeleton* then shows it.
 * Bulletproof Retarget doesn't need Rig Bridge and never imports it. It only checks whether the skeleton has a Rig
   Bridge rig, then calls Rig Bridge's own operator.
@@ -166,7 +168,7 @@ the search fields, add a fine-tune rotation per joint, and save or load the mapp
 
 ## Install / update
 
-Drag `bulletproof_retarget-1.3.1.zip` onto the Blender window, keep **Enable Add-on** ticked and click **OK**. Then
+Drag `bulletproof_retarget-1.3.2.zip` onto the Blender window, keep **Enable Add-on** ticked and click **OK**. Then
 press **N** in the 3D Viewport and open the **BP Retarget** tab. No internet connection is needed. A newer zip installs
 over the old one the same way, and each Blender version needs its own install. If the tab is missing later, drag the zip
 in again.

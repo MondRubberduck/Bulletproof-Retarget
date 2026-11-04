@@ -71,8 +71,14 @@ def _on_source_changed(self, context):
 
 
 def _on_target_changed(self, context):
-    from . import mapping
+    from . import mapping, ops
     if self.target is not None and self.target.type != 'ARMATURE':
+        return
+    # Picked a Rig Bridge control rig: retarget onto the skeleton it drives instead,
+    # then 'Bake to Control Rig' puts the result on the rig's controls.
+    skel = ops.rig_bridge_skeleton(self.target)
+    if skel is not None and skel != self.target:
+        self.target = skel          # fires this update again for the skeleton
         return
     mapping.auto_map(self, 'TARGET')
     for it in self.mapping:  # offsets are in the old target's bone space
