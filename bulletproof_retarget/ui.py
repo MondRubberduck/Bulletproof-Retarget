@@ -25,7 +25,10 @@ def _range_text(context, s):
         return "per action" if s.range_mode == 'ACTION' else ""
     try:
         from .core import frames_for
-        ad = s.source.animation_data if s.source else None
+        rb_src = ops.rig_bridge_driving(s.source) if s.source else None
+        rb_ad = rb_src.animation_data if rb_src else None
+        src_ad = s.source.animation_data if s.source else None
+        ad = rb_ad if (rb_ad and (rb_ad.action or len(rb_ad.nla_tracks))) else src_ad
         act = s.action or (ad.action if ad else None)
         f = frames_for(s.range_mode, context.scene, act, s.frame_start, s.frame_end, 1, anim_data=ad)
         return f"{f[0]} - {f[-1]}"
@@ -69,6 +72,9 @@ class BPR_PT_main(bpy.types.Panel):
         row.prop(s, "source", text="Source", icon='ARMATURE_DATA')
         row.operator("bpr.swap_rigs", text="", icon='ARROW_LEFTRIGHT')
         _rig_status(col, s.source, s.detected_source, s.source_score, "source")
+        rb_src = ops.rig_bridge_driving(s.source) if s.source else None
+        if rb_src is not None:
+            col.label(text=f"Driven by Control Rig ({rb_src.name})", icon='CON_ARMATURE')
         col.separator()
         row = col.row(align=True)
         row.prop(s, "target", text="Target", icon='ARMATURE_DATA')
@@ -85,6 +91,8 @@ class BPR_PT_main(bpy.types.Panel):
         rb_rig = ops.rig_bridge_rig(s.target) if d is None or d.control is None else None
         if rb_rig is not None:
             col.prop(s, "rig_bridge_bake", text=f"Bake to Control Rig ({rb_rig.name})", icon='CON_ARMATURE')
+            if s.rig_bridge_bake and hasattr(s.target, "rig_bridge") and hasattr(s.target.rig_bridge, "bake_mode"):
+                col.row(align=True).prop(s.target.rig_bridge, "bake_mode", expand=True)
         row = box.row(align=True)
         row.operator("bpr.use_selected", icon='RESTRICT_SELECT_OFF')
         sub = row.row(align=True)

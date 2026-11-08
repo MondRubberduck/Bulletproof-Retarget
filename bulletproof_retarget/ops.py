@@ -158,11 +158,46 @@ def _rig_bridge_bound(tgt, name):
     return pb is not None and any(c.name.startswith("RB_") and not c.mute for c in pb.constraints)
 
 
+def rig_bridge_driving(ob):
+    """Control rig actively driving ``ob`` via Rig Bridge constraints, else None."""
+    rig = rig_bridge_rig(ob)
+    if rig is None or ob.pose is None:
+        return None
+    if any(_rig_bridge_bound(ob, pb.name) for pb in ob.pose.bones):
+        return rig
+    return None
+
+
+def _set_rig_bridge_muted(ob, muted):
+    prev = []
+    if ob is None or ob.pose is None:
+        return prev
+    for pb in ob.pose.bones:
+        for c in pb.constraints:
+            if c.name.startswith("RB_"):
+                prev.append((c, c.mute))
+                c.mute = muted
+    return prev
+
+
+def _restore_rig_bridge_muted(prev):
+    for c, m in prev:
+        c.mute = m
+
+
+def _has_motion(ob):
+    if core.has_motion(ob):
+        return True
+    rb = rig_bridge_driving(ob)
+    return rb is not None and core.has_motion(rb)
+
+
 def _rig_bridge_bake(context, tgt):
     """Run Rig Bridge > Bake to Control Rig on the target (its own operator)."""
     vl = context.view_layer
     prev_active, prev_sel = vl.objects.active, list(context.selected_objects)
     hidden = tgt.hide_get()
+    rb_rig = rig_bridge_rig(tgt)
     try:
         tgt.hide_set(False)
         for o in prev_sel:
@@ -175,9 +210,13 @@ def _rig_bridge_bake(context, tgt):
         tgt.select_set(False)
         tgt.hide_set(hidden)
         for o in prev_sel:
-            if o.name in vl.objects:
+            if o.name in vl.objects and not (o == tgt and hidden):
                 o.select_set(True)
-        vl.objects.active = prev_active
+        if prev_active == tgt and hidden and rb_rig is not None and rb_rig.name in vl.objects:
+            rb_rig.select_set(True)
+            vl.objects.active = rb_rig
+        else:
+            vl.objects.active = prev_active
 
 
 def _target_overrides(tgt, bones):
@@ -363,8 +402,11 @@ def run_retarget(context, s, progress=True):
     else:
         jobs = [s.action]
     src_ad = src.animation_data
+    rb_src = rig_bridge_driving(src)
+    rb_src_ad = rb_src.animation_data if rb_src is not None else None
     for a in jobs:
-        if a is not None and not core.action_matches_rig(a, src):
+        if a is not None and not core.action_matches_rig(a, src) and not (
+                rb_src is not None and core.action_matches_rig(a, rb_src)):
             raise RetargetError(f"Action '{a.name}' does not animate the bones of '{src.name}' "
                                 f"(made for another rig?). Pick another action.")
     if any(a is not None for a in jobs):
@@ -372,9 +414,15 @@ def run_retarget(context, s, progress=True):
         if src.library is not None and any(a is not None and not (src_ad and src_ad.action == a) for a in jobs):
             raise RetargetError(f"Source '{src.name}' is linked; its action cannot be changed. Make a library "
                                 f"override, or clear the Action field to use what it plays now.")
-        if src_ad and src_ad.use_tweak_mode:
+        if (src_ad and src_ad.use_tweak_mode) or (rb_src_ad and rb_src_ad.use_tweak_mode):
             raise RetargetError("The source is in NLA tweak mode. Exit tweak mode (Tab in the NLA editor) first.")
-    if jobs == [None] and not (src_ad and (src_ad.action or len(src_ad.nla_tracks))) and not src.constraints:
+    has_src_anim = bool(
+        (src_ad and (src_ad.action or len(src_ad.nla_tracks)))
+        or (rb_src_ad and (rb_src_ad.action or len(rb_src_ad.nla_tracks)))
+        or src.constraints
+        or (rb_src is not None and rb_src.constraints)
+    )
+    if jobs == [None] and not has_src_anim:
         raise RetargetError("The source has no animation. Pick an action in the Animation box.")
 
     saved_mode = _ensure_object_mode(context)
@@ -382,14 +430,19 @@ def run_retarget(context, s, progress=True):
     results = []
     notes = []
     state = vis = None
+    rb_mute_saved = []
     assigned = False
     progress_on = False
     try:
-        state = core.SceneState(scene, (src, tgt))
-        vis = _Visibility(context, (src, tgt), s.fast_bake)
+        rigs = (src, tgt, rb_src) if rb_src is not None else (src, tgt)
+        state = core.SceneState(scene, rigs)
+        vis = _Visibility(context, rigs, s.fast_bake)
+        rb_mute_saved = [(c, c.mute) for pb in src.pose.bones for c in pb.constraints if c.name.startswith("RB_")]
         if src.data.pose_position == 'REST':
             src.data.pose_position = 'POSE'
             warnings.append("The source was in Rest Position; it was switched to Pose Position for the bake.")
+        if rb_src is not None and rb_src.data.pose_position == 'REST':
+            rb_src.data.pose_position = 'POSE'
         context.view_layer.update()
         plan = build_plan_from_settings(context, s)
         warnings.extend(plan.warnings)
@@ -429,12 +482,16 @@ def run_retarget(context, s, progress=True):
         std = sk.BY_ID.get(s.detected_target)
         std_name = std.short if std else "Retarget"
         protect = protected_actions(src, jobs)
+        if rb_src is not None:
+            protect |= protected_actions(rb_src, jobs)
 
+        eff_src_ad = (rb_src_ad if (rb_src_ad and (rb_src_ad.action or len(rb_src_ad.nla_tracks)))
+                      else src_ad)
         job_frames = []
         for a in jobs:
-            job_frames.append(core.frames_for(s.range_mode, scene, a or (src_ad.action if src_ad else None),
+            job_frames.append(core.frames_for(s.range_mode, scene, a or (eff_src_ad.action if eff_src_ad else None),
                                               s.frame_start, s.frame_end, s.frame_step,
-                                              anim_data=src_ad))
+                                              anim_data=eff_src_ad))
         total = sum(len(f) for f in job_frames)
         done = [0]
         if progress:
@@ -455,14 +512,30 @@ def run_retarget(context, s, progress=True):
             # Every job starts from the user's original source state.
             state.restore_anim(src)
             state.reset_values(src)
+            if rb_src is not None:
+                state.restore_anim(rb_src)
+                state.reset_values(rb_src)
+            _restore_rig_bridge_muted(rb_mute_saved)
             if a is not None:
-                ad = core.assign_action(src, a)
-                if ad.action_slot is None:
-                    raise RetargetError(f"Action '{a.name}' has no slot that can animate '{src.name}'.")
-                if s.isolate_action and src.library is None:
-                    ad.use_nla = False
+                if rb_src is not None and not core.action_matches_rig(a, src) and core.action_matches_rig(a, rb_src):
+                    _set_rig_bridge_muted(src, False)
+                    ad = core.assign_action(rb_src, a)
+                    if ad.action_slot is None:
+                        raise RetargetError(f"Action '{a.name}' has no slot that can animate '{rb_src.name}'.")
+                    if s.isolate_action and rb_src.library is None:
+                        ad.use_nla = False
+                else:
+                    if rb_src is not None:
+                        _set_rig_bridge_muted(src, True)
+                    ad = core.assign_action(src, a)
+                    if ad.action_slot is None:
+                        raise RetargetError(f"Action '{a.name}' has no slot that can animate '{src.name}'.")
+                    if s.isolate_action and src.library is None:
+                        ad.use_nla = False
             buf, info = core.bake(context, plan, frames, key_bones=key_bones, progress=tick, driver=driver)
-            base = a.name if a is not None else (src_ad.action.name if src_ad and src_ad.action else src.name)
+            base = a.name if a is not None else (eff_src_ad.action.name if eff_src_ad and eff_src_ad.action else src.name)
+            if rb_src is not None and base.startswith(rb_src.name + "|"):
+                base = base[len(rb_src.name) + 1:] or base
             name = _fmt_name(s.name_template, action=base, target=tgt.name, standard=std_name, source=src.name)
             if name in written:
                 name = f"{name}_{base}"
@@ -475,7 +548,7 @@ def run_retarget(context, s, progress=True):
             out, slot = core.write_action(buf, name, overwrite=s.overwrite,
                                           interpolation=core.resolve_interpolation(
                                               s.interpolation, s.frame_step,
-                                              a or (src_ad.action if src_ad else None)),
+                                              a or (eff_src_ad.action if eff_src_ad else None)),
                                           fake_user=s.fake_user, protect=protect)
             if out.name in existing and (out != before or had_slot):
                 replaced.append(out.name)
@@ -503,6 +576,10 @@ def run_retarget(context, s, progress=True):
             else:
                 state.restore_anim(src)
                 state.reset_values(src)
+                if rb_src is not None:
+                    state.restore_anim(rb_src)
+                    state.reset_values(rb_src)
+                _restore_rig_bridge_muted(rb_mute_saved)
                 core.reset_pose(tgt)
                 # The animation being replaced must not vanish on save.
                 st = state.anim.get(tgt)
@@ -540,6 +617,7 @@ def run_retarget(context, s, progress=True):
         if progress_on:
             wm.progress_end()
         try:
+            _restore_rig_bridge_muted(rb_mute_saved)
             if state is not None:
                 state.restore(skip={tgt} if assigned else ())
         finally:
@@ -620,6 +698,7 @@ class BPR_OT_preview_frame(bpy.types.Operator):
         s = _settings(context)
         src, tgt = s.source, s.target
         state = vis = saved_mode = None
+        rb_mute_saved = []
         try:
             if src is not None and src == tgt:
                 raise RetargetError("Source and target must be different armatures.")
@@ -628,25 +707,43 @@ class BPR_OT_preview_frame(bpy.types.Operator):
             if tgt.data.pose_position == 'REST':
                 raise RetargetError(f"'{tgt.name}' is in Rest Position; switch it to Pose Position to preview.")
             _sync_detection(s, [])
-            if s.action is not None and not core.action_matches_rig(s.action, src):
+            rb_src = rig_bridge_driving(src)
+            if s.action is not None and not core.action_matches_rig(s.action, src) and not (
+                    rb_src is not None and core.action_matches_rig(s.action, rb_src)):
                 raise RetargetError(f"Action '{s.action.name}' does not animate '{src.name}'.")
             saved_mode = _ensure_object_mode(context)
-            state = core.SceneState(context.scene, (src,))
-            vis = _Visibility(context, (src, tgt), False)
+            src_rigs = (src, rb_src) if rb_src is not None else (src,)
+            vis_rigs = (src, tgt, rb_src) if rb_src is not None else (src, tgt)
+            state = core.SceneState(context.scene, src_rigs)
+            vis = _Visibility(context, vis_rigs, False)
+            rb_mute_saved = [(c, c.mute) for pb in src.pose.bones for c in pb.constraints if c.name.startswith("RB_")]
             if src.data.pose_position == 'REST':
                 src.data.pose_position = 'POSE'
+            if rb_src is not None and rb_src.data.pose_position == 'REST':
+                rb_src.data.pose_position = 'POSE'
             context.view_layer.update()
             plan = build_plan_from_settings(context, s)
             driver = _make_driver(s, plan)
-            if s.action is not None and src.library is None:
-                ad = core.assign_action(src, s.action)
-                if s.isolate_action:
-                    ad.use_nla = False
+            if s.action is not None:
+                if rb_src is not None and not core.action_matches_rig(s.action, src) and core.action_matches_rig(s.action, rb_src):
+                    if rb_src.library is None:
+                        _set_rig_bridge_muted(src, False)
+                        ad = core.assign_action(rb_src, s.action)
+                        if s.isolate_action:
+                            ad.use_nla = False
+                elif src.library is None:
+                    if rb_src is not None:
+                        _set_rig_bridge_muted(src, True)
+                    ad = core.assign_action(src, s.action)
+                    if s.isolate_action:
+                        ad.use_nla = False
             context.scene.frame_set(context.scene.frame_current, subframe=context.scene.frame_subframe)
             samples = core.sample_source(plan, context.evaluated_depsgraph_get())
             bases = None if driver else core.solve(plan, samples)
             # Back to the source's own state first: restoring sets the frame, and that
             # would overwrite the preview pose with the target's action.
+            _restore_rig_bridge_muted(rb_mute_saved)
+            rb_mute_saved = []
             state.restore()
             state = None
             ad = tgt.animation_data
@@ -664,7 +761,11 @@ class BPR_OT_preview_frame(bpy.types.Operator):
                 msg = f"Target posed through its {mode_desc} controls; switches stay set until Ctrl+Z.{takes_over}"
             else:
                 core.apply_pose(plan, bases)
-                msg = f"Target posed.{takes_over}"
+                rb_tgt = rig_bridge_driving(tgt)
+                if rb_tgt is not None:
+                    msg = f"Target skeleton posed (driven by '{rb_tgt.name}'; click Retarget Animation to bake to the control rig)."
+                else:
+                    msg = f"Target posed.{takes_over}"
         except RetargetError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
@@ -673,6 +774,7 @@ class BPR_OT_preview_frame(bpy.types.Operator):
             self.report({'ERROR'}, f"Preview failed: {e}")
             return {'CANCELLED'}
         finally:
+            _restore_rig_bridge_muted(rb_mute_saved)
             if state is not None:
                 state.restore()
             if vis is not None:
@@ -706,11 +808,15 @@ class BPR_OT_use_selected(bpy.types.Operator):
         hint = None
         for o in context.selected_objects:
             a = _armature_of(o)
+            if a is not None:
+                a = rig_bridge_skeleton(a) or a
             if a is not None and a not in arms:
                 arms.append(a)
             elif a is None and o.instance_type == 'COLLECTION' and o.instance_collection:
                 hint = o
         active = _armature_of(context.view_layer.objects.active)
+        if active is not None:
+            active = rig_bridge_skeleton(active) or active
         if not arms:
             if hint is not None:
                 self.report({'WARNING'}, f"'{hint.name}' is a linked asset. Use Object > Library Override > "
@@ -724,7 +830,7 @@ class BPR_OT_use_selected(bpy.types.Operator):
             if ob == s.source or (ob == s.target and s.source is not None):
                 self.report({'INFO'}, f"'{ob.name}' is already picked. Select a second rig to change the other one.")
                 return {'FINISHED'}
-            if core.has_motion(ob) or s.source is None:
+            if _has_motion(ob) or s.source is None:
                 if ob == s.target:
                     s.target = None
                 s.source = ob
@@ -750,7 +856,7 @@ def _pick_direction(a, b, active):
     move, the active object is the target (the rig the next clip goes onto may already
     be animated). If that says nothing, or neither moves, a control rig is the source.
     """
-    ma, mb = core.has_motion(a), core.has_motion(b)
+    ma, mb = _has_motion(a), _has_motion(b)
     if ma != mb:
         return (a, b) if ma else (b, a)
     if ma:
@@ -794,8 +900,11 @@ class BPR_OT_swap_rigs(bpy.types.Operator):
         # Offsets are in the old target's bone space; the action picked was the old source's.
         for it in s.mapping:
             it.offset = (0.0, 0.0, 0.0)
-        ad = tgt.animation_data if tgt is not None else None
-        s.action = ad.action if ad and ad.action and core.action_matches_rig(ad.action, tgt) else None
+        if s.source is not None and rig_bridge_driving(s.source) is not None:
+            s.action = None
+        else:
+            ad = tgt.animation_data if tgt is not None else None
+            s.action = ad.action if ad and ad.action and core.action_matches_rig(ad.action, tgt) else None
         return {'FINISHED'}
 
 
@@ -838,9 +947,10 @@ def refresh_batch(s):
     s.batch.clear()
     if s.source is None:
         return 0
+    rb_src = rig_bridge_driving(s.source)
     for a in sorted(bpy.data.actions, key=lambda x: x.name.lower()):
         try:
-            ok = core.action_matches_rig(a, s.source)
+            ok = core.action_matches_rig(a, s.source) or (rb_src is not None and core.action_matches_rig(a, rb_src))
         except Exception:
             ok = False
         if not ok:

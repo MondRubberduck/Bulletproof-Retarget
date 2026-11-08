@@ -52,19 +52,28 @@ def _target_type_items(self, context):
 
 
 def _on_source_changed(self, context):
-    from . import mapping
+    from . import mapping, ops
     from .core import action_matches_rig
     src = self.source
     if src is not None and src.type != 'ARMATURE':
         return
+    # Picked a Rig Bridge control rig: read the skeleton it drives instead,
+    # which carries the character's full standard hierarchy and live pose.
+    skel = ops.rig_bridge_skeleton(src)
+    if skel is not None and skel != src:
+        self.source = skel          # fires this update again for the skeleton
+        return
     mapping.auto_map(self, 'SOURCE')
-    # An action picked for the previous rig would bake a motionless result.
-    if self.action is not None and (src is None or not action_matches_rig(self.action, src)):
+    if src is not None and ops.rig_bridge_driving(src) is not None:
         self.action = None
-    if src is not None and self.action is None:
-        ad = src.animation_data
-        if ad and ad.action and action_matches_rig(ad.action, src):
-            self.action = ad.action
+    else:
+        # An action picked for the previous rig would bake a motionless result.
+        if self.action is not None and (src is None or not action_matches_rig(self.action, src)):
+            self.action = None
+        if src is not None and self.action is None:
+            ad = src.animation_data
+            if ad and ad.action and action_matches_rig(ad.action, src):
+                self.action = ad.action
     if self.use_batch:
         from .ops import refresh_batch
         refresh_batch(self)
