@@ -54,7 +54,8 @@ You do **not** need to configure bone lists or load mapping presets. As soon as 
 
 1. Put both characters in the same scene.
 2. Select both (any order) and click **Use Selected**. The rig that really moves becomes the source; a fresh
-   Mixamo download doesn't count, since its action is a single pose. If that's the wrong way round, click **Swap** (⇄).
+   Mixamo download doesn't count, since its action is a single pose. If both rigs are animated, the **active**
+   object (selected last) becomes the target. If that's the wrong way round, click **Swap** (⇄).
    Selecting a character's mesh also works; the add-on finds its armature.
 3. Pick the **Action** to transfer. Leave it empty to use whatever the source plays right now.
 4. Choose **Root Motion**: *Full* (travel), *In Place*, or *None*, and optionally toggle **Floor** to prevent feet/toes from sinking below the target's ground level.
@@ -100,6 +101,8 @@ animation lands on the rig's FK/IK controls (using Rig Bridge's limb mode), and 
 * Bulletproof Retarget doesn't need Rig Bridge and never imports it. It only checks whether the skeleton has a Rig
   Bridge rig, then calls Rig Bridge's own operator.
 * Forearm Twist Share is skipped on these skeletons, because Rig Bridge already drives the twist bones.
+* A Shift+D copy of a compiled skeleton still follows the original character's control rig. Bulletproof Retarget
+  doesn't bake onto that rig and says so; compile the copy in Rig Bridge to give it its own rig.
 
 ## OptiTrack
 
@@ -139,7 +142,7 @@ With **Overwrite Existing** off, every run keeps the earlier takes: `Walk_UE5`, 
 
 **Limits:** a rigid skeleton (or FK limbs) cannot squash or stretch, so if the source's limbs stretch, hands and feet
 can't land exactly (the report warns you). The forearm deliberately takes half of the wrist twist; set
-**Forearm Twist Share** to 0 for an exact copy. Enable **Floor** if source feet pass through the ground plane and you want to prevent target feet/toes from sinking below ground. Blender's FBX import sets the scene's frame rate to the file's rate, which
+**Forearm Twist Share** to 0 for an exact copy. Enable **Floor** if source feet pass through the ground plane and you want to prevent target feet/toes from sinking below ground. It keeps the foot and toe *joints* at their rest height; a shoe mesh that reaches below its joints can still touch the floor first. Blender's FBX import sets the scene's frame rate to the file's rate, which
 changes how a scene's existing animation plays: check **Output → Frame Rate** after importing a character as a target.
 
 If you go back to an old action on a control rig and it doesn't key every control, clear the pose first (Alt+G, Alt+R,
@@ -165,6 +168,9 @@ the search fields, add a fine-tune rotation per joint, and save or load the mapp
 * **Interpolation**: *Auto* uses Linear when every frame of a linear source is keyed (exact, no overshoot between frames),
   and Bezier for sources with eased curves or a frame step.
 * Name template, overwrite, fake user, frame step, key all bones / scale, ignore NLA, fast bake.
+* **Ignore NLA** (on by default) evaluates only the chosen action. NLA tracks on the source, such as MoCap Cleanup's
+  residual detail layer, are left out; the report names them. Turn it off if they belong to the motion.
+* Batch lists only actions that animate the source; hidden helper actions (names starting with ".") are skipped.
 
 ## Install / update
 

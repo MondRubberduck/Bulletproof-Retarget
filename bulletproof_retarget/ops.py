@@ -131,7 +131,24 @@ def rig_bridge_rig(ob):
     rig = getattr(st, "rig", None) if st is not None else None
     if rig is None or not _operator_exists("rig_bridge", "transfer"):
         return None
+    if rig_bridge_owner(rig) not in (None, ob):     # a Shift+D copy still pointing at another character's rig
+        return None
     return rig
+
+
+def rig_bridge_owner(rig):
+    """Skeleton a Rig Bridge control rig belongs to (its public ``rig_bridge.source``), or None."""
+    st = getattr(rig, "rig_bridge", None) if rig is not None else None
+    return getattr(st, "source", None) if st is not None else None
+
+
+def rig_bridge_copy_of(ob):
+    """If ``ob`` is a copy of a compiled skeleton that still follows another character's control rig:
+    that character's skeleton, else None."""
+    st = getattr(ob, "rig_bridge", None) if ob is not None else None
+    rig = getattr(st, "rig", None) if st is not None else None
+    owner = rig_bridge_owner(rig)
+    return owner if owner is not None and owner != ob else None
 
 
 def _operator_exists(module, name):
@@ -146,6 +163,9 @@ def rig_bridge_skeleton(rig):
     """Skeleton driven by ``rig`` if it is a Rig Bridge control rig, else None."""
     if rig is None or rig.type != 'ARMATURE' or getattr(rig, "rig_bridge", None) is None:
         return None
+    owner = rig_bridge_owner(rig)                   # the skeleton it was compiled for, not a copy of it
+    if owner is not None and getattr(getattr(owner, "rig_bridge", None), "rig", None) == rig:
+        return owner
     for ob in bpy.data.objects:
         st = getattr(ob, "rig_bridge", None) if ob.type == 'ARMATURE' else None
         if st is not None and getattr(st, "rig", None) == rig:
@@ -416,6 +436,13 @@ def run_retarget(context, s, progress=True):
                                 f"override, or clear the Action field to use what it plays now.")
         if (src_ad and src_ad.use_tweak_mode) or (rb_src_ad and rb_src_ad.use_tweak_mode):
             raise RetargetError("The source is in NLA tweak mode. Exit tweak mode (Tab in the NLA editor) first.")
+    if s.isolate_action and any(a is not None for a in jobs):
+        ignored = [t.name for ad_ in (src_ad, rb_src_ad) if ad_ is not None
+                   for t in ad_.nla_tracks if not t.mute and len(t.strips)]
+        if ignored:
+            warnings.append(f"Ignore NLA: the source's NLA track(s) {', '.join(repr(n) for n in ignored[:3])}"
+                            f"{'...' if len(ignored) > 3 else ''} were not included. Turn Ignore NLA off (Advanced) "
+                            f"if they belong to the motion.")
     has_src_anim = bool(
         (src_ad and (src_ad.action or len(src_ad.nla_tracks)))
         or (rb_src_ad and (rb_src_ad.action or len(rb_src_ad.nla_tracks)))
@@ -457,6 +484,11 @@ def run_retarget(context, s, progress=True):
             tgt.data.pose_position = 'POSE'
         over = _target_overrides(tgt, driver.keyed if driver else core.solved_bones(plan))
         rb_rig = rig_bridge_rig(tgt) if driver is None else None
+        copy_of = rig_bridge_copy_of(tgt) if driver is None else None
+        if copy_of is not None:
+            warnings.append(f"'{tgt.name}' is a copy of '{copy_of.name}' and still follows that character's control "
+                            f"rig, so the new keys don't show and nothing was baked onto it. Compile '{tgt.name}' "
+                            f"in Rig Bridge to give it its own rig.")
         if rb_rig is not None:
             rb_over = [b for b in over if _rig_bridge_bound(tgt, b)]
             over = [b for b in over if b not in rb_over]
@@ -949,6 +981,8 @@ def refresh_batch(s):
         return 0
     rb_src = rig_bridge_driving(s.source)
     for a in sorted(bpy.data.actions, key=lambda x: x.name.lower()):
+        if a.name.startswith("."):                  # hidden helpers of other tools (MoCap Cleanup's raw snapshots)
+            continue
         try:
             ok = core.action_matches_rig(a, s.source) or (rb_src is not None and core.action_matches_rig(a, rb_src))
         except Exception:
