@@ -5,7 +5,7 @@ Retarget animation between humanoid rigs in one click: **P2M rigs** (Regular, Fe
 
 [![Download Latest Release](https://img.shields.io/github/v/release/MondRubberduck/Bulletproof-Retarget?label=Download%20Latest%20.zip&style=for-the-badge)](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)
 
-* **Download:** Grab **`bulletproof_retarget-1.3.4.zip`** from the **[Releases Page](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)** (or from [`dist/bulletproof_retarget-1.3.4.zip`](dist/bulletproof_retarget-1.3.4.zip)).
+* **Download:** Grab **`bulletproof_retarget-1.3.5.zip`** from the **[Releases Page](https://github.com/MondRubberduck/Bulletproof-Retarget/releases/latest)** (or from [`dist/bulletproof_retarget-1.3.5.zip`](dist/bulletproof_retarget-1.3.5.zip)).
 * **Install:** Drag and drop the `.zip` file straight into the Blender 5.0+ window, keep **Enable Add-on** ticked, and click **OK**.
 * **Panel:** **3D Viewport → Sidebar (`N`) → BP Retarget**
 
@@ -175,7 +175,7 @@ the search fields, add a fine-tune rotation per joint, and save or load the mapp
 
 ## Install / update
 
-Drag `bulletproof_retarget-1.3.4.zip` onto the Blender window, keep **Enable Add-on** ticked and click **OK**. Then
+Drag `bulletproof_retarget-1.3.5.zip` onto the Blender window, keep **Enable Add-on** ticked and click **OK**. Then
 press **N** in the 3D Viewport and open the **BP Retarget** tab. No internet connection is needed. A newer zip installs
 over the old one the same way, and each Blender version needs its own install. If the tab is missing later, drag the zip
 in again.
