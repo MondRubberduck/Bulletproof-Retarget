@@ -102,7 +102,8 @@ animation lands on the rig's FK/IK controls (using Rig Bridge's limb mode), and 
   Bridge rig, then calls Rig Bridge's own operator.
 * Forearm Twist Share is skipped on these skeletons, because Rig Bridge already drives the twist bones.
 * A Shift+D copy of a compiled skeleton still follows the original character's control rig. Bulletproof Retarget
-  doesn't bake onto that rig and says so; compile the copy in Rig Bridge to give it its own rig.
+  doesn't bake onto that rig and says so; compile the copy in Rig Bridge to give it its own rig. If the copy's Rig
+  Bridge constraints were removed, the new keys show on the copy, and the report only says that nothing was baked.
 
 ## OptiTrack
 

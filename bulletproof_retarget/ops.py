@@ -486,9 +486,14 @@ def run_retarget(context, s, progress=True):
         rb_rig = rig_bridge_rig(tgt) if driver is None else None
         copy_of = rig_bridge_copy_of(tgt) if driver is None else None
         if copy_of is not None:
-            warnings.append(f"'{tgt.name}' is a copy of '{copy_of.name}' and still follows that character's control "
-                            f"rig, so the new keys don't show and nothing was baked onto it. Compile '{tgt.name}' "
-                            f"in Rig Bridge to give it its own rig.")
+            if any(_rig_bridge_bound(tgt, pb.name) for pb in tgt.pose.bones):
+                warnings.append(f"'{tgt.name}' is a copy of '{copy_of.name}' and still follows that character's control "
+                                f"rig, so the new keys don't show and nothing was baked onto it. Compile '{tgt.name}' "
+                                f"in Rig Bridge to give it its own rig.")
+            else:   # the binding was removed, only the link is left: the keys show, just nothing to bake (QA N4)
+                warnings.append(f"'{tgt.name}' is a copy of '{copy_of.name}': its Rig Bridge link still points at that "
+                                f"character's control rig, so nothing was baked onto that rig. Compile '{tgt.name}' "
+                                f"in Rig Bridge if it should get a control rig of its own.")
         if rb_rig is not None:
             rb_over = [b for b in over if _rig_bridge_bound(tgt, b)]
             over = [b for b in over if b not in rb_over]
